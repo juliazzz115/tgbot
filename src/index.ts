@@ -28,6 +28,29 @@ async function main() {
     process.exit(1);
   }
 
+  // Инициализация операторов
+  try {
+    console.log('👥 Initializing operators...');
+    for (const operatorId of config.operatorIds) {
+      const operator = await prisma.operator.upsert({
+        where: { telegramId: operatorId },
+        update: {
+          isOnline: true,
+          isActive: true
+        },
+        create: {
+          telegramId: operatorId,
+          isOnline: true,
+          isActive: true,
+          maxChats: config.maxChatsPerOperator
+        }
+      });
+      console.log(`  ✅ Operator ${operatorId} is online`);
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize operators:', error);
+  }
+
   // Создание бота
   const bot = new Telegraf<BotContext>(config.botToken);
 
