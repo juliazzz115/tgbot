@@ -53,6 +53,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   });
 
   bot.hears('📋 Очередь', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
     await handleQueueCommand(ctx);
   });
 
@@ -64,6 +65,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   });
 
   bot.hears('💬 Активные', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
     await handleActiveCommand(ctx);
   });
 
@@ -75,6 +77,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   });
 
   bot.hears('📊 Статистика', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
     await handleStatsCommand(ctx);
   });
 
@@ -93,6 +96,8 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   });
 
   bot.hears(/🟢 Онлайн|🔴 Оффлайн/, async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
+
     const telegramId = BigInt(ctx.from.id);
     if (!operatorService.isOperator(telegramId)) return;
 
@@ -276,6 +281,11 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
       return; // Не оператор
     }
 
+    // Работать только в личном чате с ботом
+    if (ctx.chat?.type !== 'private') {
+      return;
+    }
+
     // Пропустить команды
     if (ctx.message.text.startsWith('/')) {
       return;
@@ -328,6 +338,11 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   bot.on(message('photo'), async (ctx) => {
     const telegramId = BigInt(ctx.from.id);
     if (!operatorService.isOperator(telegramId)) return;
+
+    // Работать только в личном чате с ботом
+    if (ctx.chat?.type !== 'private') {
+      return;
+    }
 
     const conversationId = operatorContext.get(telegramId.toString());
     if (!conversationId) {

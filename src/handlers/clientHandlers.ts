@@ -35,6 +35,11 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
       return;
     }
 
+    // Работать только в личном чате с ботом
+    if (ctx.chat?.type !== 'private') {
+      return;
+    }
+
     // Пропустить команды
     if (ctx.message.text.startsWith('/')) {
       return;
@@ -99,6 +104,11 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
       return;
     }
 
+    // Работать только в личном чате с ботом
+    if (ctx.chat?.type !== 'private') {
+      return;
+    }
+
     try {
       const conversation = await conversationService.getOrCreateConversation(
         telegramId,
@@ -152,6 +162,11 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
     const telegramId = BigInt(ctx.from.id);
 
     if (operatorService.isOperator(telegramId)) {
+      return;
+    }
+
+    // Работать только в личном чате с ботом
+    if (ctx.chat?.type !== 'private') {
       return;
     }
 
