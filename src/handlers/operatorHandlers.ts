@@ -106,10 +106,14 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   bot.on(message('text'), async (ctx) => {
     const telegramId = BigInt(ctx.from.id);
 
+    // Проверить, это оператор? Если нет - просто выходим БЕЗ return, чтобы не блокировать другие обработчики
     if (!operatorService.isOperator(telegramId)) {
-      return;
+      // Не оператор - ничего не делаем, просто выходим из функции
+      // НЕ ИСПОЛЬЗУЕМ return, чтобы дать другим обработчикам шанс обработать сообщение
+      return; // TODO: возможно нужно использовать next() вместо return
     }
 
+    // Это оператор - продолжаем обработку
     if (ctx.chat?.type !== 'private') {
       return;
     }
@@ -118,21 +122,21 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
       return;
     }
 
+    // Проверим, есть ли активная сессия
+    const activeClientId = operatorSessionService.getActiveClient(telegramId);
+
+    if (!activeClientId) {
+      console.log(`[Operator Text] No active session for operator ${telegramId}`);
+      await ctx.reply(
+        'ℹ️ Сначала выберите клиента из списка.\n\n' +
+        'Используйте команду /clients чтобы увидеть активные диалоги.'
+      );
+      return;
+    }
+
     try {
       console.log(`[Operator Text] Operator ${telegramId} sent message: "${ctx.message.text}"`);
-
-      // Проверить, есть ли активная сессия
-      const activeClientId = operatorSessionService.getActiveClient(telegramId);
       console.log(`[Operator Text] Active client ID: ${activeClientId}`);
-
-      if (!activeClientId) {
-        console.log(`[Operator Text] No active client, sending help message`);
-        await ctx.reply(
-          'ℹ️ Сначала выберите клиента из списка.\n\n' +
-          'Используйте команду /clients чтобы увидеть активные диалоги.'
-        );
-        return;
-      }
 
       // Найти диалог с этим клиентом
       const operator = await operatorService.getOrCreateOperator(telegramId);
@@ -184,19 +188,23 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
    */
   bot.on(message('photo'), async (ctx) => {
     const telegramId = BigInt(ctx.from.id);
-    if (!operatorService.isOperator(telegramId)) return;
+
+    if (!operatorService.isOperator(telegramId)) {
+      return; // Не оператор - пропускаем
+    }
 
     if (ctx.chat?.type !== 'private') {
       return;
     }
 
-    try {
-      const activeClientId = operatorSessionService.getActiveClient(telegramId);
+    const activeClientId = operatorSessionService.getActiveClient(telegramId);
 
-      if (!activeClientId) {
-        await ctx.reply('ℹ️ Сначала выберите клиента из списка. Используйте /clients');
-        return;
-      }
+    if (!activeClientId) {
+      await ctx.reply('ℹ️ Сначала выберите клиента из списка. Используйте /clients');
+      return;
+    }
+
+    try {
 
       const operator = await operatorService.getOrCreateOperator(telegramId);
       const conversation = await conversationService.findActiveConversation(operator.id, activeClientId);
@@ -239,19 +247,23 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
    */
   bot.on(message('document'), async (ctx) => {
     const telegramId = BigInt(ctx.from.id);
-    if (!operatorService.isOperator(telegramId)) return;
+
+    if (!operatorService.isOperator(telegramId)) {
+      return; // Не оператор - пропускаем
+    }
 
     if (ctx.chat?.type !== 'private') {
       return;
     }
 
-    try {
-      const activeClientId = operatorSessionService.getActiveClient(telegramId);
+    const activeClientId = operatorSessionService.getActiveClient(telegramId);
 
-      if (!activeClientId) {
-        await ctx.reply('ℹ️ Сначала выберите клиента из списка. Используйте /clients');
-        return;
-      }
+    if (!activeClientId) {
+      await ctx.reply('ℹ️ Сначала выберите клиента из списка. Используйте /clients');
+      return;
+    }
+
+    try {
 
       const operator = await operatorService.getOrCreateOperator(telegramId);
       const conversation = await conversationService.findActiveConversation(operator.id, activeClientId);
