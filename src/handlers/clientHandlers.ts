@@ -96,8 +96,8 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         ctx.message.text
       );
 
-      // Подтверждение клиенту
-      await ctx.react('👍');
+      // Подтверждение клиенту (удалено - не нужно подтверждение клиенту)
+      // await ctx.react('👍');
 
     } catch (error) {
       console.error('Error handling client message:', error);
@@ -171,7 +171,8 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         messageText
       );
 
-      await ctx.react('👍');
+      // Подтверждение клиенту (удалено)
+      // await ctx.react('👍');
 
     } catch (error) {
       console.error('Error handling client photo:', error);
@@ -246,7 +247,8 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         messageText
       );
 
-      await ctx.react('👍');
+      // Подтверждение клиенту (удалено)
+      // await ctx.react('👍');
 
     } catch (error) {
       console.error('Error handling client document:', error);

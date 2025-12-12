@@ -118,10 +118,14 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     }
 
     try {
+      console.log(`[Operator Text] Operator ${telegramId} sent message: "${ctx.message.text}"`);
+
       // Проверить, есть ли активная сессия
       const activeClientId = operatorSessionService.getActiveClient(telegramId);
+      console.log(`[Operator Text] Active client ID: ${activeClientId}`);
 
       if (!activeClientId) {
+        console.log(`[Operator Text] No active client, sending help message`);
         await ctx.reply(
           'ℹ️ Сначала выберите клиента из списка.\n\n' +
           'Используйте команду /clients чтобы увидеть активные диалоги.'
@@ -131,9 +135,13 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
 
       // Найти диалог с этим клиентом
       const operator = await operatorService.getOrCreateOperator(telegramId);
+      console.log(`[Operator Text] Operator DB ID: ${operator.id}`);
+
       const conversation = await conversationService.findActiveConversation(operator.id, activeClientId);
+      console.log(`[Operator Text] Found conversation: ${conversation?.id}`);
 
       if (!conversation) {
+        console.log(`[Operator Text] No conversation found`);
         await ctx.reply(
           '❌ Диалог с этим клиентом не найден или закрыт.\n\n' +
           'Используйте /clients для выбора другого клиента.'
@@ -143,6 +151,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
       }
 
       // Сохранить сообщение
+      console.log(`[Operator Text] Saving message to conversation ${conversation.id}`);
       await conversationService.saveMessage(
         conversation.id,
         telegramId,
@@ -152,13 +161,16 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
       );
 
       // Отправить клиенту
+      console.log(`[Operator Text] Sending message to client ${activeClientId}`);
       await bot.telegram.sendMessage(
         activeClientId.toString(),
         `👨‍💼 Оператор:\n\n${ctx.message.text}`
       );
 
-      // Подтверждение оператору
-      await ctx.react('👍');
+      console.log(`[Operator Text] Message sent successfully`);
+
+      // Подтверждение оператору (заменить react на обычное сообщение)
+      await ctx.reply('✅ Отправлено');
 
     } catch (error) {
       console.error('Error sending operator message:', error);
@@ -213,7 +225,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
         { caption: caption ? `👨‍💼 Оператор:\n\n${caption}` : '👨‍💼 Оператор' }
       );
 
-      await ctx.react('👍');
+      await ctx.reply('✅ Фото отправлено');
 
     } catch (error) {
       console.error('Error sending operator photo:', error);
@@ -267,7 +279,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
         { caption: caption ? `👨‍💼 Оператор:\n\n${caption}` : '👨‍💼 Оператор' }
       );
 
-      await ctx.react('👍');
+      await ctx.reply('✅ Документ отправлен');
 
     } catch (error) {
       console.error('Error sending operator document:', error);
