@@ -4,9 +4,20 @@ import { config } from './config';
 import { prisma } from './db';
 import { registerClientHandlers } from './handlers/clientHandlers';
 import { registerOperatorHandlers } from './handlers/operatorHandlers';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function main() {
   console.log('🤖 Starting Telegram Support Bot...');
+
+  // Создать директорию для базы данных, если её нет
+  const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './dev.db';
+  const dbDir = path.dirname(dbPath);
+
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+    console.log(`📁 Created database directory: ${dbDir}`);
+  }
 
   // Проверка подключения к БД
   try {
