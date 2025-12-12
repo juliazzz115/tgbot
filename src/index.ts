@@ -54,9 +54,9 @@ async function main() {
   // Создание бота
   const bot = new Telegraf<BotContext>(config.botToken);
 
-  // Регистрация обработчиков
-  registerClientHandlers(bot);
+  // Регистрация обработчиков (ВАЖНО: операторы первыми!)
   registerOperatorHandlers(bot);
+  registerClientHandlers(bot);
 
   // Обработка ошибок
   bot.catch((err, ctx) => {
