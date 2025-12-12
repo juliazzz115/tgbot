@@ -3,10 +3,8 @@ import { BotContext, SenderType } from '../types';
 import { conversationService } from '../services/conversationService';
 import { operatorService } from '../services/operatorService';
 import { formatUserName } from '../utils/formatters';
+import { notifyOperatorNewMessage } from './operatorHandlers';
 import { message } from 'telegraf/filters';
-
-// Маппинг: messageId у оператора -> telegramId клиента
-const messageToClient = new Map<number, bigint>();
 
 export function registerClientHandlers(bot: Telegraf<BotContext>) {
   /**
@@ -82,22 +80,24 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         await conversationService.assignOperatorById(conversation.id, operator.id);
       }
 
-      // Переслать сообщение оператору
-      const userName = formatUserName(ctx.from);
-      const userInfo = `👤 ${userName}${ctx.from.username ? ` (@${ctx.from.username})` : ''}`;
-
-      const sentMessage = await bot.telegram.sendMessage(
-        operator.telegramId.toString(),
-        `${userInfo}:\n\n${ctx.message.text}`,
+      // Отправить уведомление оператору
+      await notifyOperatorNewMessage(
+        bot,
+        operator.telegramId,
         {
-          reply_markup: {
-            force_reply: true,
-          }
-        }
+          telegramId,
+          username: ctx.from.username,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name,
+          conversationId: conversation.id,
+          lastMessageTime: new Date(),
+          messageCount: 0
+        },
+        ctx.message.text
       );
 
-      // Сохранить маппинг для ответа
-      messageToClient.set(sentMessage.message_id, telegramId);
+      // Подтверждение клиенту
+      await ctx.react('👍');
 
     } catch (error) {
       console.error('Error handling client message:', error);
@@ -154,23 +154,24 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         await conversationService.assignOperatorById(conversation.id, operator.id);
       }
 
-      // Переслать фото оператору
-      const userName = formatUserName(ctx.from);
-      const userInfo = `👤 ${userName}${ctx.from.username ? ` (@${ctx.from.username})` : ''}`;
-
-      const sentMessage = await bot.telegram.sendPhoto(
-        operator.telegramId.toString(),
-        photo.file_id,
+      // Отправить уведомление оператору
+      const messageText = caption ? `📷 Фото: ${caption}` : '📷 Фото';
+      await notifyOperatorNewMessage(
+        bot,
+        operator.telegramId,
         {
-          caption: caption ? `${userInfo}:\n\n${caption}` : userInfo,
-          reply_markup: {
-            force_reply: true,
-          }
-        }
+          telegramId,
+          username: ctx.from.username,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name,
+          conversationId: conversation.id,
+          lastMessageTime: new Date(),
+          messageCount: 0
+        },
+        messageText
       );
 
-      // Сохранить маппинг для ответа
-      messageToClient.set(sentMessage.message_id, telegramId);
+      await ctx.react('👍');
 
     } catch (error) {
       console.error('Error handling client photo:', error);
@@ -226,23 +227,26 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         await conversationService.assignOperatorById(conversation.id, operator.id);
       }
 
-      // Переслать документ оператору
-      const userName = formatUserName(ctx.from);
-      const userInfo = `👤 ${userName}${ctx.from.username ? ` (@${ctx.from.username})` : ''}`;
+      // Отправить уведомление оператору
+      const fileName = ctx.message.document.file_name || 'документ';
+      const messageText = caption ? `📄 ${fileName}: ${caption}` : `📄 ${fileName}`;
 
-      const sentMessage = await bot.telegram.sendDocument(
-        operator.telegramId.toString(),
-        ctx.message.document.file_id,
+      await notifyOperatorNewMessage(
+        bot,
+        operator.telegramId,
         {
-          caption: caption ? `${userInfo}:\n\n${caption}` : userInfo,
-          reply_markup: {
-            force_reply: true,
-          }
-        }
+          telegramId,
+          username: ctx.from.username,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name,
+          conversationId: conversation.id,
+          lastMessageTime: new Date(),
+          messageCount: 0
+        },
+        messageText
       );
 
-      // Сохранить маппинг для ответа
-      messageToClient.set(sentMessage.message_id, telegramId);
+      await ctx.react('👍');
 
     } catch (error) {
       console.error('Error handling client document:', error);
@@ -268,5 +272,3 @@ async function getAvailableOperator() {
 
   return sortedOperators.length > 0 ? sortedOperators[0] : null;
 }
-
-export { messageToClient };

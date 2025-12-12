@@ -227,6 +227,71 @@ export class ConversationService {
       take: limit,
     });
   }
+
+  /**
+   * Получить детальную информацию об активных диалогах оператора для меню
+   */
+  async getOperatorConversationsForMenu(operatorId: number) {
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        operatorId,
+        status: ConversationStatus.ACTIVE,
+      },
+      include: {
+        user: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    // Получить количество сообщений для каждого диалога
+    const result = await Promise.all(
+      conversations.map(async (conv) => {
+        const messageCount = await prisma.message.count({
+          where: { conversationId: conv.id },
+        });
+
+        return {
+          telegramId: conv.user.telegramId,
+          username: conv.user.username,
+          firstName: conv.user.firstName,
+          lastName: conv.user.lastName,
+          conversationId: conv.id,
+          lastMessageTime: conv.messages[0]?.createdAt || conv.createdAt,
+          messageCount,
+        };
+      })
+    );
+
+    return result;
+  }
+
+  /**
+   * Найти активный диалог оператора с клиентом
+   */
+  async findActiveConversation(operatorId: number, clientTelegramId: bigint) {
+    const user = await prisma.user.findUnique({
+      where: { telegramId: clientTelegramId },
+    });
+
+    if (!user) return null;
+
+    return await prisma.conversation.findFirst({
+      where: {
+        operatorId,
+        userId: user.id,
+        status: ConversationStatus.ACTIVE,
+      },
+      include: {
+        user: true,
+      },
+    });
+  }
 }
 
 export const conversationService = new ConversationService();

@@ -2,9 +2,10 @@ import { Telegraf } from 'telegraf';
 import { BotContext, SenderType } from '../types';
 import { conversationService } from '../services/conversationService';
 import { operatorService } from '../services/operatorService';
+import { operatorSessionService } from '../services/operatorSessionService';
 import { formatOperatorStats } from '../utils/formatters';
+import { createClientListMenu, createChatHeader, createNewMessageNotification } from '../utils/operatorMenu';
 import { message } from 'telegraf/filters';
-import { messageToClient } from './clientHandlers';
 
 export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   /**
@@ -29,13 +30,22 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     await ctx.reply(
       '👨‍💼 Панель оператора\n\n' +
       'Добро пожаловать! Вы вошли в систему как оператор поддержки.\n\n' +
-      '💬 Сообщения от клиентов будут приходить прямо сюда.\n' +
-      'Просто отвечайте на них как в обычном чате!\n\n' +
+      '📋 Используйте /clients - чтобы увидеть список активных клиентов\n' +
+      '💬 Выберите клиента из списка, чтобы начать с ним общение\n' +
+      '✍️ Все ваши сообщения будут отправляться выбранному клиенту\n\n' +
       'Доступные команды:\n' +
+      '/clients - Список активных клиентов\n' +
       '/stats - Моя статистика\n' +
-      '/online - Войти в сеть (начать принимать обращения)\n' +
+      '/online - Войти в сеть\n' +
       '/offline - Выйти из сети'
     );
+  });
+
+  /**
+   * Команда /clients - показать список клиентов
+   */
+  bot.command('clients', async (ctx) => {
+    await handleClientsCommand(ctx, bot);
   });
 
   /**
@@ -60,57 +70,75 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
   });
 
   /**
-   * Обработка текстовых сообщений от операторов (ответы клиентам)
+   * Обработка callback query (нажатия на inline кнопки)
+   */
+  bot.on('callback_query', async (ctx) => {
+    const telegramId = BigInt(ctx.from.id);
+
+    if (!operatorService.isOperator(telegramId)) {
+      return;
+    }
+
+    const data = (ctx.callbackQuery as any).data;
+
+    if (data === 'back_to_list') {
+      // Вернуться к списку клиентов
+      operatorSessionService.clearActiveClient(telegramId);
+      await handleClientsCommand(ctx, bot);
+      await ctx.answerCbQuery('Возврат к списку клиентов');
+    } else if (data.startsWith('open_chat_')) {
+      // Открыть чат с клиентом
+      const clientId = BigInt(data.replace('open_chat_', ''));
+      await openClientChat(ctx, bot, telegramId, clientId);
+      await ctx.answerCbQuery();
+    } else if (data.startsWith('history_')) {
+      // Показать историю сообщений
+      const clientId = BigInt(data.replace('history_', ''));
+      await showChatHistory(ctx, telegramId, clientId);
+      await ctx.answerCbQuery('История загружена');
+    }
+  });
+
+  /**
+   * Обработка текстовых сообщений от операторов
    */
   bot.on(message('text'), async (ctx) => {
     const telegramId = BigInt(ctx.from.id);
 
     if (!operatorService.isOperator(telegramId)) {
-      return; // Не оператор
+      return;
     }
 
-    // Работать только в личном чате с ботом
     if (ctx.chat?.type !== 'private') {
       return;
     }
 
-    // Пропустить команды
     if (ctx.message.text.startsWith('/')) {
       return;
     }
 
     try {
-      // Проверить, это ответ на сообщение клиента?
-      let clientTelegramId: bigint | undefined;
-      const replyToMessage = (ctx.message as any).reply_to_message;
+      // Проверить, есть ли активная сессия
+      const activeClientId = operatorSessionService.getActiveClient(telegramId);
 
-      console.log(`[Operator Message] From: ${ctx.from.id}`);
-      console.log(`[Operator Message] Has reply_to_message: ${!!replyToMessage}`);
-
-      if (replyToMessage) {
-        // Оператор ответил на сообщение - найти клиента
-        console.log(`[Operator Message] Reply to message_id: ${replyToMessage.message_id}`);
-        clientTelegramId = messageToClient.get(replyToMessage.message_id);
-        console.log(`[Operator Message] Found client: ${clientTelegramId}`);
-        console.log(`[Operator Message] messageToClient size: ${messageToClient.size}`);
-      }
-
-      if (!clientTelegramId) {
-        console.log(`[Operator Message] No client found, sending help message`);
+      if (!activeClientId) {
         await ctx.reply(
-          'ℹ️ Чтобы ответить клиенту, используйте функцию "Ответить" (reply) на его сообщение.\n\n' +
-          'Или просто нажмите на сообщение клиента и выберите "Ответить".'
+          'ℹ️ Сначала выберите клиента из списка.\n\n' +
+          'Используйте команду /clients чтобы увидеть активные диалоги.'
         );
         return;
       }
 
       // Найти диалог с этим клиентом
       const operator = await operatorService.getOrCreateOperator(telegramId);
-      const conversations = await conversationService.getOperatorConversations(operator.id);
-      const conversation = conversations.find(conv => conv.user.telegramId === clientTelegramId);
+      const conversation = await conversationService.findActiveConversation(operator.id, activeClientId);
 
       if (!conversation) {
-        await ctx.reply('❌ Диалог с этим клиентом не найден или закрыт');
+        await ctx.reply(
+          '❌ Диалог с этим клиентом не найден или закрыт.\n\n' +
+          'Используйте /clients для выбора другого клиента.'
+        );
+        operatorSessionService.clearActiveClient(telegramId);
         return;
       }
 
@@ -125,7 +153,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
 
       // Отправить клиенту
       await bot.telegram.sendMessage(
-        clientTelegramId.toString(),
+        activeClientId.toString(),
         `👨‍💼 Оператор:\n\n${ctx.message.text}`
       );
 
@@ -145,39 +173,30 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     const telegramId = BigInt(ctx.from.id);
     if (!operatorService.isOperator(telegramId)) return;
 
-    // Работать только в личном чате с ботом
     if (ctx.chat?.type !== 'private') {
       return;
     }
 
     try {
-      // Проверить, это ответ на сообщение клиента?
-      let clientTelegramId: bigint | undefined;
-      const replyToMessage = (ctx.message as any).reply_to_message;
+      const activeClientId = operatorSessionService.getActiveClient(telegramId);
 
-      if (replyToMessage) {
-        clientTelegramId = messageToClient.get(replyToMessage.message_id);
-      }
-
-      if (!clientTelegramId) {
-        await ctx.reply('ℹ️ Чтобы отправить фото клиенту, ответьте (reply) на его сообщение.');
+      if (!activeClientId) {
+        await ctx.reply('ℹ️ Сначала выберите клиента из списка. Используйте /clients');
         return;
       }
 
-      // Найти диалог
       const operator = await operatorService.getOrCreateOperator(telegramId);
-      const conversations = await conversationService.getOperatorConversations(operator.id);
-      const conversation = conversations.find(conv => conv.user.telegramId === clientTelegramId);
+      const conversation = await conversationService.findActiveConversation(operator.id, activeClientId);
 
       if (!conversation) {
         await ctx.reply('❌ Диалог с этим клиентом не найден');
+        operatorSessionService.clearActiveClient(telegramId);
         return;
       }
 
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
       const caption = (ctx.message as any).caption;
 
-      // Сохранить сообщение
       await conversationService.saveMessage(
         conversation.id,
         telegramId,
@@ -188,14 +207,12 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
         'photo'
       );
 
-      // Отправить клиенту
       await bot.telegram.sendPhoto(
-        clientTelegramId.toString(),
+        activeClientId.toString(),
         photo.file_id,
         { caption: caption ? `👨‍💼 Оператор:\n\n${caption}` : '👨‍💼 Оператор' }
       );
 
-      // Подтверждение
       await ctx.react('👍');
 
     } catch (error) {
@@ -211,38 +228,29 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     const telegramId = BigInt(ctx.from.id);
     if (!operatorService.isOperator(telegramId)) return;
 
-    // Работать только в личном чате с ботом
     if (ctx.chat?.type !== 'private') {
       return;
     }
 
     try {
-      // Проверить, это ответ на сообщение клиента?
-      let clientTelegramId: bigint | undefined;
-      const replyToMessage = (ctx.message as any).reply_to_message;
+      const activeClientId = operatorSessionService.getActiveClient(telegramId);
 
-      if (replyToMessage) {
-        clientTelegramId = messageToClient.get(replyToMessage.message_id);
-      }
-
-      if (!clientTelegramId) {
-        await ctx.reply('ℹ️ Чтобы отправить документ клиенту, ответьте (reply) на его сообщение.');
+      if (!activeClientId) {
+        await ctx.reply('ℹ️ Сначала выберите клиента из списка. Используйте /clients');
         return;
       }
 
-      // Найти диалог
       const operator = await operatorService.getOrCreateOperator(telegramId);
-      const conversations = await conversationService.getOperatorConversations(operator.id);
-      const conversation = conversations.find(conv => conv.user.telegramId === clientTelegramId);
+      const conversation = await conversationService.findActiveConversation(operator.id, activeClientId);
 
       if (!conversation) {
         await ctx.reply('❌ Диалог с этим клиентом не найден');
+        operatorSessionService.clearActiveClient(telegramId);
         return;
       }
 
       const caption = (ctx.message as any).caption;
 
-      // Сохранить сообщение
       await conversationService.saveMessage(
         conversation.id,
         telegramId,
@@ -253,14 +261,12 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
         'document'
       );
 
-      // Отправить клиенту
       await bot.telegram.sendDocument(
-        clientTelegramId.toString(),
+        activeClientId.toString(),
         ctx.message.document.file_id,
         { caption: caption ? `👨‍💼 Оператор:\n\n${caption}` : '👨‍💼 Оператор' }
       );
 
-      // Подтверждение
       await ctx.react('👍');
 
     } catch (error) {
@@ -271,6 +277,126 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
 }
 
 // Вспомогательные функции
+
+async function handleClientsCommand(ctx: any, bot: Telegraf<BotContext>) {
+  const telegramId = BigInt(ctx.from.id);
+  if (!operatorService.isOperator(telegramId)) return;
+
+  try {
+    const operator = await operatorService.getOrCreateOperator(telegramId);
+    const clients = await conversationService.getOperatorConversationsForMenu(operator.id);
+
+    const menu = createClientListMenu(telegramId, clients);
+
+    // Если есть активная сессия, очистить её
+    operatorSessionService.clearActiveClient(telegramId);
+
+    await ctx.reply(menu.text, {
+      reply_markup: menu.markup,
+      parse_mode: 'HTML'
+    });
+  } catch (error) {
+    console.error('Error in clients command:', error);
+    await ctx.reply('❌ Ошибка при получении списка клиентов');
+  }
+}
+
+async function openClientChat(ctx: any, bot: Telegraf<BotContext>, operatorId: bigint, clientId: bigint) {
+  try {
+    // Установить активную сессию
+    operatorSessionService.setActiveClient(operatorId, clientId);
+
+    const operator = await operatorService.getOrCreateOperator(operatorId);
+    const conversation = await conversationService.findActiveConversation(operator.id, clientId);
+
+    if (!conversation) {
+      await ctx.editMessageText('❌ Диалог с этим клиентом не найден или закрыт');
+      operatorSessionService.clearActiveClient(operatorId);
+      return;
+    }
+
+    const clientInfo = {
+      telegramId: conversation.user.telegramId,
+      username: conversation.user.username,
+      firstName: conversation.user.firstName,
+      lastName: conversation.user.lastName,
+      conversationId: conversation.id,
+      lastMessageTime: new Date(),
+      messageCount: 0
+    };
+
+    const header = createChatHeader(clientInfo, operatorId);
+
+    await ctx.editMessageText(header.text, {
+      reply_markup: header.markup
+    });
+
+    // Показать последние 10 сообщений
+    const messages = await conversationService.getConversationMessages(conversation.id, 10);
+
+    if (messages.length > 0) {
+      let historyText = '📜 Последние сообщения:\n━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+      // Сообщения приходят в обратном порядке (новые первые), нужно развернуть
+      messages.reverse();
+
+      for (const msg of messages) {
+        const time = msg.createdAt.toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        const sender = msg.senderType === 'user' ? '👤 Клиент' : '👨‍💼 Вы';
+        historyText += `[${time}] ${sender}:\n${msg.text || '[файл]'}\n\n`;
+      }
+
+      await ctx.reply(historyText);
+    }
+  } catch (error) {
+    console.error('Error opening client chat:', error);
+    await ctx.reply('❌ Ошибка при открытии чата');
+  }
+}
+
+async function showChatHistory(ctx: any, operatorId: bigint, clientId: bigint) {
+  try {
+    const operator = await operatorService.getOrCreateOperator(operatorId);
+    const conversation = await conversationService.findActiveConversation(operator.id, clientId);
+
+    if (!conversation) {
+      await ctx.answerCbQuery('❌ Диалог не найден', { show_alert: true });
+      return;
+    }
+
+    const messages = await conversationService.getConversationMessages(conversation.id, 30);
+
+    if (messages.length === 0) {
+      await ctx.reply('📜 История сообщений пуста');
+      return;
+    }
+
+    let historyText = '📜 История сообщений (последние 30):\n━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+    messages.reverse();
+
+    for (const msg of messages) {
+      const time = msg.createdAt.toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit'
+      });
+
+      const sender = msg.senderType === 'user' ? '👤 Клиент' : '👨‍💼 Вы';
+      historyText += `[${time}] ${sender}:\n${msg.text || '[файл]'}\n\n`;
+    }
+
+    await ctx.reply(historyText);
+  } catch (error) {
+    console.error('Error showing history:', error);
+    await ctx.reply('❌ Ошибка при загрузке истории');
+  }
+}
 
 async function handleStatsCommand(ctx: BotContext) {
   const telegramId = BigInt(ctx.from.id);
@@ -303,5 +429,47 @@ async function handleOnlineCommand(ctx: BotContext, isOnline: boolean) {
   } catch (error) {
     console.error('Error in online command:', error);
     await ctx.reply('❌ Ошибка при изменении статуса');
+  }
+}
+
+// Экспортировать функцию для отправки уведомлений о новых сообщениях
+export async function notifyOperatorNewMessage(
+  bot: Telegraf<BotContext>,
+  operatorId: bigint,
+  clientInfo: {
+    telegramId: bigint;
+    username?: string;
+    firstName?: string;
+    lastName?: string;
+    conversationId: number;
+    lastMessageTime: Date;
+    messageCount: number;
+  },
+  messageText: string
+) {
+  try {
+    // Увеличить счетчик непрочитанных
+    operatorSessionService.incrementUnread(operatorId, clientInfo.telegramId);
+
+    // Проверить, общается ли оператор с этим клиентом сейчас
+    const activeClientId = operatorSessionService.getActiveClient(operatorId);
+
+    if (activeClientId === clientInfo.telegramId) {
+      // Оператор уже в чате с этим клиентом, не отправлять уведомление
+      return;
+    }
+
+    // Отправить уведомление
+    const notification = createNewMessageNotification(clientInfo, messageText);
+
+    await bot.telegram.sendMessage(
+      operatorId.toString(),
+      notification.text,
+      {
+        reply_markup: notification.markup
+      }
+    );
+  } catch (error) {
+    console.error('Error notifying operator:', error);
   }
 }
