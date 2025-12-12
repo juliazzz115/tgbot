@@ -16,6 +16,7 @@ export class OperatorSessionService {
   setActiveClient(operatorId: bigint, clientId: bigint): void {
     activeSessions.set(operatorId, clientId);
     console.log(`[Session] Operator ${operatorId} -> Client ${clientId}`);
+    console.log(`[Session] Total active sessions: ${activeSessions.size}`);
 
     // Сбросить счетчик непрочитанных для этого клиента
     this.clearUnreadForClient(operatorId, clientId);
@@ -25,7 +26,14 @@ export class OperatorSessionService {
    * Получить активного клиента для оператора
    */
   getActiveClient(operatorId: bigint): bigint | undefined {
-    return activeSessions.get(operatorId);
+    const clientId = activeSessions.get(operatorId);
+    console.log(`[Session] Get active client for operator ${operatorId}: ${clientId}`);
+    console.log(`[Session] Session exists: ${activeSessions.has(operatorId)}`);
+
+    // Debug: показать все ключи в Map
+    console.log(`[Session] All operator IDs in map:`, Array.from(activeSessions.keys()));
+
+    return clientId;
   }
 
   /**

@@ -80,6 +80,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     }
 
     const data = (ctx.callbackQuery as any).data;
+    console.log(`[Callback] Operator ${telegramId} pressed button: ${data}`);
 
     if (data === 'back_to_list') {
       // Вернуться к списку клиентов
@@ -315,13 +316,20 @@ async function handleClientsCommand(ctx: any, bot: Telegraf<BotContext>) {
 
 async function openClientChat(ctx: any, bot: Telegraf<BotContext>, operatorId: bigint, clientId: bigint) {
   try {
+    console.log(`[Open Chat] Operator ${operatorId} opening chat with client ${clientId}`);
+
     // Установить активную сессию
     operatorSessionService.setActiveClient(operatorId, clientId);
+    console.log(`[Open Chat] Session set successfully`);
 
     const operator = await operatorService.getOrCreateOperator(operatorId);
+    console.log(`[Open Chat] Operator DB ID: ${operator.id}`);
+
     const conversation = await conversationService.findActiveConversation(operator.id, clientId);
+    console.log(`[Open Chat] Conversation found: ${conversation?.id}`);
 
     if (!conversation) {
+      console.log(`[Open Chat] No conversation found, clearing session`);
       await ctx.editMessageText('❌ Диалог с этим клиентом не найден или закрыт');
       operatorSessionService.clearActiveClient(operatorId);
       return;
