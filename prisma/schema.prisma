@@ -24,7 +24,6 @@ model Operator {
   updatedAt     DateTime       @updatedAt
 
   conversations Conversation[]
-  messages      Message[]
 }
 
 // Клиенты
@@ -39,7 +38,6 @@ model User {
   updatedAt     DateTime       @updatedAt
 
   conversations Conversation[]
-  messages      Message[]
 }
 
 // Диалоги между клиентом и оператором
@@ -74,8 +72,6 @@ model Message {
   createdAt       DateTime @default(now())
 
   conversation    Conversation @relation(fields: [conversationId], references: [id])
-  user            User?        @relation(fields: [senderId], references: [telegramId])
-  operator        Operator?    @relation(fields: [senderId], references: [telegramId])
 
   @@index([conversationId])
 }
