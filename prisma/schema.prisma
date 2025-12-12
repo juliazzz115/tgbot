@@ -1,0 +1,81 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Операторы поддержки
+model Operator {
+  id            Int            @id @default(autoincrement())
+  telegramId    BigInt         @unique
+  username      String?
+  firstName     String?
+  lastName      String?
+  isActive      Boolean        @default(true)
+  isOnline      Boolean        @default(false)
+  maxChats      Int            @default(5)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  conversations Conversation[]
+  messages      Message[]
+}
+
+// Клиенты
+model User {
+  id            Int            @id @default(autoincrement())
+  telegramId    BigInt         @unique
+  username      String?
+  firstName     String?
+  lastName      String?
+  isBlocked     Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  conversations Conversation[]
+  messages      Message[]
+}
+
+// Диалоги между клиентом и оператором
+model Conversation {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  operatorId  Int?
+  status      String   @default("waiting") // waiting, active, closed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  closedAt    DateTime?
+
+  user        User     @relation(fields: [userId], references: [id])
+  operator    Operator? @relation(fields: [operatorId], references: [id])
+  messages    Message[]
+
+  @@index([status])
+  @@index([userId])
+  @@index([operatorId])
+}
+
+// Сообщения
+model Message {
+  id              Int      @id @default(autoincrement())
+  conversationId  Int
+  senderId        BigInt   // telegramId отправителя
+  senderType      String   // "user" или "operator"
+  text            String?
+  fileId          String?  // Для файлов/фото/документов
+  fileType        String?  // photo, document, voice, video, etc
+  messageId       Int      // ID сообщения в Telegram
+  createdAt       DateTime @default(now())
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  user            User?        @relation(fields: [senderId], references: [telegramId])
+  operator        Operator?    @relation(fields: [senderId], references: [telegramId])
+
+  @@index([conversationId])
+}
