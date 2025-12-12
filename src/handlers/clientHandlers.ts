@@ -2,6 +2,7 @@ import { Telegraf } from 'telegraf';
 import { BotContext, SenderType } from '../types';
 import { conversationService } from '../services/conversationService';
 import { operatorService } from '../services/operatorService';
+import { operatorSessionService } from '../services/operatorSessionService';
 import { formatUserName } from '../utils/formatters';
 import { notifyOperatorNewMessage } from './operatorHandlers';
 import { message } from 'telegraf/filters';
@@ -25,85 +26,7 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
     );
   });
 
-  /**
-   * Обработка текстовых сообщений от клиентов
-   */
-  bot.on(message('text'), async (ctx) => {
-    const telegramId = BigInt(ctx.from.id);
-
-    // Пропустить, если это оператор
-    if (operatorService.isOperator(telegramId)) {
-      return;
-    }
-
-    // Работать только в личном чате с ботом
-    if (ctx.chat?.type !== 'private') {
-      return;
-    }
-
-    // Пропустить команды
-    if (ctx.message.text.startsWith('/')) {
-      return;
-    }
-
-    try {
-      // Получить или создать диалог
-      const conversation = await conversationService.getOrCreateConversation(
-        telegramId,
-        ctx.from.username,
-        ctx.from.first_name,
-        ctx.from.last_name
-      );
-
-      // Сохранить сообщение
-      await conversationService.saveMessage(
-        conversation.id,
-        telegramId,
-        SenderType.USER,
-        ctx.message.message_id,
-        ctx.message.text
-      );
-
-      // Получить доступного оператора
-      const operator = conversation.operator || await getAvailableOperator();
-
-      if (!operator) {
-        await ctx.reply(
-          '⏳ Ваше сообщение получено. В данный момент все операторы заняты.\n' +
-          'Мы ответим вам как можно скорее!'
-        );
-        return;
-      }
-
-      // Назначить оператора, если еще не назначен
-      if (!conversation.operatorId) {
-        await conversationService.assignOperatorById(conversation.id, operator.id);
-      }
-
-      // Отправить уведомление оператору
-      await notifyOperatorNewMessage(
-        bot,
-        operator.telegramId,
-        {
-          telegramId,
-          username: ctx.from.username,
-          firstName: ctx.from.first_name,
-          lastName: ctx.from.last_name,
-          conversationId: conversation.id,
-          lastMessageTime: new Date(),
-          messageCount: 0
-        },
-        ctx.message.text
-      );
-
-      // Подтверждение клиенту (удалено - не нужно подтверждение клиенту)
-      // await ctx.react('👍');
-
-    } catch (error) {
-      console.error('Error handling client message:', error);
-      await ctx.reply('❌ Произошла ошибка. Пожалуйста, попробуйте позже.');
-    }
-  });
+  // Текстовые сообщения от клиентов теперь обрабатываются в messageRouter.ts
 
   /**
    * Обработка фото от клиентов

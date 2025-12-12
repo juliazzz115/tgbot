@@ -4,6 +4,7 @@ import { config } from './config';
 import { prisma } from './db';
 import { registerClientHandlers } from './handlers/clientHandlers';
 import { registerOperatorHandlers } from './handlers/operatorHandlers';
+import { createMessageRouter } from './handlers/messageRouter';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -54,9 +55,13 @@ async function main() {
   // Создание бота
   const bot = new Telegraf<BotContext>(config.botToken);
 
-  // Регистрация обработчиков (ВАЖНО: операторы первыми!)
-  registerOperatorHandlers(bot);
-  registerClientHandlers(bot);
+  // Регистрация middleware для роутинга сообщений
+  // Этот роутер определяет, кто отправил сообщение (клиент/оператор) и обрабатывает соответственно
+  bot.use(createMessageRouter(bot));
+
+  // Регистрация обработчиков команд и специальных сообщений
+  registerClientHandlers(bot); // /start для клиентов, фото, документы
+  registerOperatorHandlers(bot); // /start, /clients, /stats для операторов, callback buttons
 
   // Обработка ошибок
   bot.catch((err, ctx) => {
