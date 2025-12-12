@@ -84,12 +84,19 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
       let clientTelegramId: bigint | undefined;
       const replyToMessage = (ctx.message as any).reply_to_message;
 
+      console.log(`[Operator Message] From: ${ctx.from.id}`);
+      console.log(`[Operator Message] Has reply_to_message: ${!!replyToMessage}`);
+
       if (replyToMessage) {
         // Оператор ответил на сообщение - найти клиента
+        console.log(`[Operator Message] Reply to message_id: ${replyToMessage.message_id}`);
         clientTelegramId = messageToClient.get(replyToMessage.message_id);
+        console.log(`[Operator Message] Found client: ${clientTelegramId}`);
+        console.log(`[Operator Message] messageToClient size: ${messageToClient.size}`);
       }
 
       if (!clientTelegramId) {
+        console.log(`[Operator Message] No client found, sending help message`);
         await ctx.reply(
           'ℹ️ Чтобы ответить клиенту, используйте функцию "Ответить" (reply) на его сообщение.\n\n' +
           'Или просто нажмите на сообщение клиента и выберите "Ответить".'
