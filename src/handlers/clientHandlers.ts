@@ -263,8 +263,8 @@ async function getAvailableOperator() {
 
   // Взять оператора с наименьшим количеством активных чатов
   const sortedOperators = operators
-    .filter(op => op.conversations.length < op.maxChats)
-    .sort((a, b) => a.conversations.length - b.conversations.length);
+    .filter((op: any) => op.conversations.length < op.maxChats)
+    .sort((a: any, b: any) => a.conversations.length - b.conversations.length);
 
   return sortedOperators.length > 0 ? sortedOperators[0] : null;
 }
