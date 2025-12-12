@@ -82,10 +82,11 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     try {
       // Проверить, это ответ на сообщение клиента?
       let clientTelegramId: bigint | undefined;
+      const replyToMessage = (ctx.message as any).reply_to_message;
 
-      if (ctx.message.reply_to_message) {
+      if (replyToMessage) {
         // Оператор ответил на сообщение - найти клиента
-        clientTelegramId = messageToClient.get(ctx.message.reply_to_message.message_id);
+        clientTelegramId = messageToClient.get(replyToMessage.message_id);
       }
 
       if (!clientTelegramId) {
@@ -145,9 +146,10 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     try {
       // Проверить, это ответ на сообщение клиента?
       let clientTelegramId: bigint | undefined;
+      const replyToMessage = (ctx.message as any).reply_to_message;
 
-      if (ctx.message.reply_to_message) {
-        clientTelegramId = messageToClient.get(ctx.message.reply_to_message.message_id);
+      if (replyToMessage) {
+        clientTelegramId = messageToClient.get(replyToMessage.message_id);
       }
 
       if (!clientTelegramId) {
@@ -166,7 +168,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
       }
 
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
-      const caption = ctx.message.caption;
+      const caption = (ctx.message as any).caption;
 
       // Сохранить сообщение
       await conversationService.saveMessage(
@@ -210,9 +212,10 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
     try {
       // Проверить, это ответ на сообщение клиента?
       let clientTelegramId: bigint | undefined;
+      const replyToMessage = (ctx.message as any).reply_to_message;
 
-      if (ctx.message.reply_to_message) {
-        clientTelegramId = messageToClient.get(ctx.message.reply_to_message.message_id);
+      if (replyToMessage) {
+        clientTelegramId = messageToClient.get(replyToMessage.message_id);
       }
 
       if (!clientTelegramId) {
@@ -230,7 +233,7 @@ export function registerOperatorHandlers(bot: Telegraf<BotContext>) {
         return;
       }
 
-      const caption = ctx.message.caption;
+      const caption = (ctx.message as any).caption;
 
       // Сохранить сообщение
       await conversationService.saveMessage(

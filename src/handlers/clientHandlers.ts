@@ -129,7 +129,7 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
       );
 
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
-      const caption = ctx.message.caption;
+      const caption = (ctx.message as any).caption;
 
       await conversationService.saveMessage(
         conversation.id,
@@ -201,7 +201,7 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         ctx.from.last_name
       );
 
-      const caption = ctx.message.caption;
+      const caption = (ctx.message as any).caption;
 
       await conversationService.saveMessage(
         conversation.id,
