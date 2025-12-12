@@ -132,6 +132,23 @@ export class ConversationService {
   }
 
   /**
+   * Назначить конкретного оператора на диалог
+   */
+  async assignOperatorById(conversationId: number, operatorId: number) {
+    return await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        operatorId,
+        status: ConversationStatus.ACTIVE,
+      },
+      include: {
+        user: true,
+        operator: true,
+      },
+    });
+  }
+
+  /**
    * Закрыть диалог
    */
   async closeConversation(conversationId: number) {

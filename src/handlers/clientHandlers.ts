@@ -5,6 +5,9 @@ import { operatorService } from '../services/operatorService';
 import { formatUserName } from '../utils/formatters';
 import { message } from 'telegraf/filters';
 
+// Маппинг: messageId у оператора -> telegramId клиента
+const messageToClient = new Map<number, bigint>();
+
 export function registerClientHandlers(bot: Telegraf<BotContext>) {
   /**
    * Команда /start для клиентов
@@ -63,31 +66,39 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         ctx.message.text
       );
 
-      // Если диалог в ожидании, отправить уведомление
-      if (conversation.status === 'waiting') {
-        await ctx.reply(
-          '⏳ Ваше сообщение получено. Пожалуйста, подождите, пока оператор подключится к диалогу.\n\n' +
-          'Мы ответим вам в ближайшее время!'
-        );
+      // Получить доступного оператора
+      const operator = conversation.operator || await getAvailableOperator();
 
-        // Уведомить всех онлайн операторов о новом обращении
-        await notifyOperatorsAboutNewConversation(bot, conversation.id);
-      } else if (conversation.operatorId && conversation.operator) {
-        // Переслать сообщение оператору
-        const userName = formatUserName(ctx.from);
-        await bot.telegram.sendMessage(
-          conversation.operator.telegramId.toString(),
-          `💬 Сообщение от ${userName} (#${conversation.id}):\n\n${ctx.message.text}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '✉️ Ответить', callback_data: `reply_${conversation.id}` }],
-                [{ text: '✅ Закрыть диалог', callback_data: `close_${conversation.id}` }],
-              ],
-            },
-          }
+      if (!operator) {
+        await ctx.reply(
+          '⏳ Ваше сообщение получено. В данный момент все операторы заняты.\n' +
+          'Мы ответим вам как можно скорее!'
         );
+        return;
       }
+
+      // Назначить оператора, если еще не назначен
+      if (!conversation.operatorId) {
+        await conversationService.assignOperatorById(conversation.id, operator.id);
+      }
+
+      // Переслать сообщение оператору
+      const userName = formatUserName(ctx.from);
+      const userInfo = `👤 ${userName}${ctx.from.username ? ` (@${ctx.from.username})` : ''}`;
+
+      const sentMessage = await bot.telegram.sendMessage(
+        operator.telegramId.toString(),
+        `${userInfo}:\n\n${ctx.message.text}`,
+        {
+          reply_markup: {
+            force_reply: true,
+          }
+        }
+      );
+
+      // Сохранить маппинг для ответа
+      messageToClient.set(sentMessage.message_id, telegramId);
+
     } catch (error) {
       console.error('Error handling client message:', error);
       await ctx.reply('❌ Произошла ошибка. Пожалуйста, попробуйте позже.');
@@ -130,25 +141,37 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         'photo'
       );
 
-      if (conversation.status === 'waiting') {
+      // Получить доступного оператора
+      const operator = conversation.operator || await getAvailableOperator();
+
+      if (!operator) {
         await ctx.reply('⏳ Ваше фото получено. Ожидайте ответа оператора.');
-        await notifyOperatorsAboutNewConversation(bot, conversation.id);
-      } else if (conversation.operatorId && conversation.operator) {
-        const userName = formatUserName(ctx.from);
-        await bot.telegram.sendPhoto(
-          conversation.operator.telegramId.toString(),
-          photo.file_id,
-          {
-            caption: `📸 Фото от ${userName} (#${conversation.id})${caption ? `:\n\n${caption}` : ''}`,
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '✉️ Ответить', callback_data: `reply_${conversation.id}` }],
-                [{ text: '✅ Закрыть диалог', callback_data: `close_${conversation.id}` }],
-              ],
-            },
-          }
-        );
+        return;
       }
+
+      // Назначить оператора, если еще не назначен
+      if (!conversation.operatorId) {
+        await conversationService.assignOperatorById(conversation.id, operator.id);
+      }
+
+      // Переслать фото оператору
+      const userName = formatUserName(ctx.from);
+      const userInfo = `👤 ${userName}${ctx.from.username ? ` (@${ctx.from.username})` : ''}`;
+
+      const sentMessage = await bot.telegram.sendPhoto(
+        operator.telegramId.toString(),
+        photo.file_id,
+        {
+          caption: caption ? `${userInfo}:\n\n${caption}` : userInfo,
+          reply_markup: {
+            force_reply: true,
+          }
+        }
+      );
+
+      // Сохранить маппинг для ответа
+      messageToClient.set(sentMessage.message_id, telegramId);
+
     } catch (error) {
       console.error('Error handling client photo:', error);
       await ctx.reply('❌ Произошла ошибка при отправке фото.');
@@ -190,25 +213,37 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
         'document'
       );
 
-      if (conversation.status === 'waiting') {
+      // Получить доступного оператора
+      const operator = conversation.operator || await getAvailableOperator();
+
+      if (!operator) {
         await ctx.reply('⏳ Ваш документ получен. Ожидайте ответа оператора.');
-        await notifyOperatorsAboutNewConversation(bot, conversation.id);
-      } else if (conversation.operatorId && conversation.operator) {
-        const userName = formatUserName(ctx.from);
-        await bot.telegram.sendDocument(
-          conversation.operator.telegramId.toString(),
-          ctx.message.document.file_id,
-          {
-            caption: `📎 Документ от ${userName} (#${conversation.id})${caption ? `:\n\n${caption}` : ''}`,
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '✉️ Ответить', callback_data: `reply_${conversation.id}` }],
-                [{ text: '✅ Закрыть диалог', callback_data: `close_${conversation.id}` }],
-              ],
-            },
-          }
-        );
+        return;
       }
+
+      // Назначить оператора, если еще не назначен
+      if (!conversation.operatorId) {
+        await conversationService.assignOperatorById(conversation.id, operator.id);
+      }
+
+      // Переслать документ оператору
+      const userName = formatUserName(ctx.from);
+      const userInfo = `👤 ${userName}${ctx.from.username ? ` (@${ctx.from.username})` : ''}`;
+
+      const sentMessage = await bot.telegram.sendDocument(
+        operator.telegramId.toString(),
+        ctx.message.document.file_id,
+        {
+          caption: caption ? `${userInfo}:\n\n${caption}` : userInfo,
+          reply_markup: {
+            force_reply: true,
+          }
+        }
+      );
+
+      // Сохранить маппинг для ответа
+      messageToClient.set(sentMessage.message_id, telegramId);
+
     } catch (error) {
       console.error('Error handling client document:', error);
       await ctx.reply('❌ Произошла ошибка при отправке документа.');
@@ -217,34 +252,21 @@ export function registerClientHandlers(bot: Telegraf<BotContext>) {
 }
 
 /**
- * Уведомить операторов о новом обращении
+ * Получить доступного оператора
  */
-async function notifyOperatorsAboutNewConversation(bot: Telegraf<BotContext>, conversationId: number) {
-  try {
-    const conversation = await conversationService.getConversation(conversationId);
-    if (!conversation) return;
+async function getAvailableOperator() {
+  const operators = await operatorService.getOnlineOperators();
 
-    const operators = await operatorService.getOnlineOperators();
-    const userName = formatUserName(conversation.user);
-
-    for (const operator of operators) {
-      try {
-        await bot.telegram.sendMessage(
-          operator.telegramId.toString(),
-          `🔔 Новое обращение!\n\n👤 ${userName}\n🆔 Диалог #${conversationId}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '✅ Взять в работу', callback_data: `take_${conversationId}` }],
-              ],
-            },
-          }
-        );
-      } catch (error) {
-        console.error(`Failed to notify operator ${operator.id}:`, error);
-      }
-    }
-  } catch (error) {
-    console.error('Error notifying operators:', error);
+  if (operators.length === 0) {
+    return null;
   }
+
+  // Взять оператора с наименьшим количеством активных чатов
+  const sortedOperators = operators
+    .filter(op => op.conversations.length < op.maxChats)
+    .sort((a, b) => a.conversations.length - b.conversations.length);
+
+  return sortedOperators.length > 0 ? sortedOperators[0] : null;
 }
+
+export { messageToClient };
